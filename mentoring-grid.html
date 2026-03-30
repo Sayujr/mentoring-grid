@@ -294,29 +294,45 @@
       overflow: hidden;
     }
     .data-header {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-      padding: 14px 20px;
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 14px;
       background: #f8f9fc;
       border-bottom: 1px solid #e2e7f0;
     }
-    .data-header h3 { font-size: 0.9rem; color: #1a3560; flex: 1; }
-    .data-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .sheets-row {
-      padding: 10px 20px;
-      background: #fffbee;
-      border-bottom: 1px solid #f0e8c8;
-      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-      font-size: 0.78rem; color: #666;
+    .data-header h3 { font-size: 0.76rem; color: #1a3560; flex: 1; font-weight: 600; }
+    .data-actions { display: flex; gap: 6px; }
+
+    /* ── Google Sheets corner widget (bottom-right) ── */
+    #sheets-widget {
+      position: fixed; bottom: 14px; right: 14px; z-index: 999;
+      font-family: 'Segoe UI', Arial, sans-serif;
     }
-    .sheets-row label { font-weight: 600; color: #444; white-space: nowrap; }
-    .sheets-row input[type="text"] {
-      flex: 1; min-width: 220px;
-      border: 1.5px solid #d8c888; border-radius: 7px;
-      padding: 6px 10px; font-size: 0.78rem; outline: none;
+    #sheets-toggle {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #1faa74; color: white; border: none;
+      font-size: 1rem; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      display: flex; align-items: center; justify-content: center;
     }
-    .sheets-row input:focus { border-color: #2d5fa6; }
-    .sheets-hint { font-size: 0.7rem; color: #999; width: 100%; }
-    .sheets-hint a { color: #2d5fa6; }
+    #sheets-toggle:hover { background: #178a5e; }
+    #sheets-panel {
+      display: none;
+      position: absolute; bottom: 44px; right: 0;
+      background: white; border-radius: 12px;
+      box-shadow: 0 6px 28px rgba(0,0,0,0.18);
+      padding: 14px 16px; width: 280px;
+      font-size: 0.76rem; color: #333;
+      border: 1px solid #dde3ed;
+    }
+    #sheets-panel.open { display: block; }
+    #sheets-panel h4 { font-size: 0.8rem; color: #1a3560; margin-bottom: 8px; }
+    #sheets-panel label { display: block; font-weight: 600; color: #555; margin-bottom: 3px; font-size: 0.72rem; }
+    #sheets-panel input {
+      width: 100%; border: 1.5px solid #c0c8d8; border-radius: 7px;
+      padding: 5px 8px; font-size: 0.74rem; outline: none;
+    }
+    #sheets-panel input:focus { border-color: #1faa74; }
+    #sheets-panel a { color: #1faa74; font-size: 0.7rem; }
     table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
     thead th {
       background: #f0f3f8; color: #1a3560;
@@ -414,6 +430,20 @@
     <input type="text" id="fb-url" placeholder="https://your-project-default-rtdb.firebaseio.com"/>
     <button class="btn btn-add" style="width:100%;margin-top:10px;font-size:0.78rem;" onclick="fbConnect()">Save &amp; Connect</button>
     <span id="gh-status" style="display:block;margin-top:8px;font-size:0.7rem;font-weight:600;">● not connected</span>
+  </div>
+</div>
+
+<!-- Google Sheets corner widget (bottom-right) -->
+<div id="sheets-widget">
+  <button id="sheets-toggle" onclick="toggleSheetsPanel()" title="Google Sheets setup">📊</button>
+  <div id="sheets-panel">
+    <h4>📊 Google Sheets</h4>
+    <p style="font-size:0.7rem;color:#777;margin-bottom:10px;">Paste your Apps Script Web App URL to push placement data to a spreadsheet.</p>
+    <label>Apps Script URL</label>
+    <input type="text" id="sheets-url" placeholder="Paste your Apps Script Web App URL…"/>
+    <span style="display:block;margin-top:6px;font-size:0.7rem;color:#aaa;">
+      Optional: <a href="#" onclick="showSheetsHelp();return false;">How to set up Google Sheets live push ›</a>
+    </span>
   </div>
 </div>
 
@@ -543,7 +573,7 @@
 <!-- ── Data Panel ── -->
 <div class="data-panel">
   <div class="data-header" onclick="toggleDataPanel()" style="cursor:pointer;user-select:none;">
-    <h3>&#128196; Placement Data <span style="font-size:0.72rem;font-weight:400;color:#8a9ab8;">(facilitator only — click to expand)</span></h3>
+    <h3>&#128196; Placement Data</h3>
     <div class="data-actions" onclick="event.stopPropagation()">
       <button class="btn btn-clear" onclick="downloadCSV()" style="font-size:0.8rem;padding:6px 14px;">&#8595; CSV</button>
       <button class="btn btn-save"  onclick="exportPng()"   style="font-size:0.8rem;padding:6px 14px;">&#8595; Grid PNG</button>
@@ -551,13 +581,6 @@
     <span id="panel-chevron" style="font-size:1rem;color:#8a9ab8;margin-left:6px;">&#9660;</span>
   </div>
   <div id="data-body" style="display:none;">
-  <div class="sheets-row">
-    <label>&#128196; Google Sheets URL</label>
-    <input type="text" id="sheets-url" placeholder="Paste your Apps Script Web App URL here…" />
-    <span class="sheets-hint">
-      Optional: <a href="#" onclick="showSheetsHelp();return false;">How to set up Google Sheets live push ›</a>
-    </span>
-  </div>
   <table>
     <thead>
       <tr>
@@ -1018,6 +1041,10 @@
 
   function toggleSyncPanel() {
     document.getElementById('sync-panel').classList.toggle('open');
+  }
+
+  function toggleSheetsPanel() {
+    document.getElementById('sheets-panel').classList.toggle('open');
   }
 
   function fbStatus(msg, color) {
