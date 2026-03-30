@@ -391,19 +391,16 @@
 
 <!-- Sync corner widget (facilitator only) -->
 <div id="sync-widget">
-  <button id="sync-toggle" onclick="toggleSyncPanel()" title="Facilitator sync settings">⚙</button>
+  <button id="sync-toggle" onclick="toggleSyncPanel()" title="Sync settings">⚙</button>
   <div id="sync-panel">
     <h4>⚡ Live Sync <span style="font-weight:400;color:#aaa;font-size:0.68rem;">(facilitator only)</span></h4>
+    <p style="font-size:0.7rem;color:#777;margin-bottom:8px;">Paste the same token on every device — data persists automatically across all sessions.</p>
     <label>GitHub Token <a href="https://github.com/settings/tokens/new?scopes=gist&description=mentoring-grid" target="_blank">get one ›</a></label>
     <input type="password" id="gh-token" placeholder="Token with gist scope"/>
-    <label>Session ID <span style="font-weight:400;color:#aaa;">(blank = new session)</span></label>
-    <input type="text" id="gh-gist" placeholder="Paste to join existing session"/>
     <button class="btn btn-add" style="width:100%;margin-top:10px;font-size:0.78rem;" onclick="ghConnect()">Connect</button>
     <span id="gh-status">● not connected</span>
-    <div id="gh-share">
-      Share this Session ID with participants:<br/>
-      <strong id="gh-gist-display"></strong><br/>
-      <button class="btn btn-clear" style="margin-top:6px;padding:3px 10px;font-size:0.7rem;" onclick="copySessionId()">Copy ID</button>
+    <div id="gh-share" style="margin-top:8px;background:#f0f6ff;border-radius:7px;padding:7px 9px;display:none;font-size:0.7rem;">
+      ✓ Persistent session active.<br/>Share the same token with participants to sync all devices.
     </div>
   </div>
 </div>
@@ -982,6 +979,8 @@
     document.getElementById('sync-toggle').classList.toggle('connected', color === '#1faa74');
   }
 
+  const GIST_DESC = 'mentoring-grid-persistent-session';
+
   async function ghConnect() {
     const tok = document.getElementById('gh-token').value.trim();
     if (!tok) { alert('Paste a GitHub token with "gist" scope — click "Get token ›".'); return; }
@@ -989,52 +988,40 @@
     localStorage.setItem('gh-token', tok);
     ghStatus('⟳ Connecting…', '#f0a500');
 
-    const existingId = document.getElementById('gh-gist').value.trim()
-                    || localStorage.getItem('gh-gist');
+    // Find existing persistent gist by description, or create it
+    try {
+      // Search through user's gists for our named one
+      const listRes = await fetch('https://api.github.com/gists?per_page=100', {
+        headers: { Authorization: `token ${ghToken}` }
+      });
+      if (!listRes.ok) throw new Error('Invalid token or no gist scope.');
+      const gists = await listRes.json();
+      const found = gists.find(g => g.description === GIST_DESC);
 
-    if (existingId) {
-      // Join existing session
-      gistId = existingId;
-      document.getElementById('gh-gist').value = gistId;
-    } else {
-      // Create new private gist
-      try {
+      if (found) {
+        gistId = found.id;
+      } else {
+        // Create it fresh
         const res = await fetch('https://api.github.com/gists', {
           method: 'POST',
           headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            description: 'Mentoring Grid Session',
+            description: GIST_DESC,
             public: false,
             files: { 'session-data.json': { content: '{}' } }
           })
         });
-        if (!res.ok) throw new Error('Could not create gist — check token has gist scope.');
-        const j = await res.json();
-        gistId = j.id;
-      } catch(e) { ghStatus('✗ ' + e.message, '#e84545'); return; }
-    }
+        if (!res.ok) throw new Error('Could not create gist.');
+        gistId = (await res.json()).id;
+      }
+    } catch(e) { ghStatus('✗ ' + e.message, '#e84545'); return; }
 
     localStorage.setItem('gh-gist', gistId);
-    document.getElementById('gh-gist').value = gistId;
-    showShareRow();
+    document.getElementById('gh-share').style.display = 'block';
 
     await ghPoll();
     if (polling) clearInterval(polling);
     polling = setInterval(ghPoll, 5000);
-  }
-
-  function showShareRow() {
-    const row = document.getElementById('gh-share');
-    row.style.display = 'inline-flex';
-    document.getElementById('gh-gist-display').textContent = gistId;
-  }
-
-  function copySessionId() {
-    navigator.clipboard.writeText(gistId).then(() => {
-      const btn = event.target;
-      btn.textContent = 'Copied!';
-      setTimeout(() => btn.textContent = 'Copy', 1500);
-    });
   }
 
   /* Poll gist — requires auth (secret gist) */
