@@ -755,7 +755,7 @@
   window.addEventListener('resize', () => mentors.forEach(m => renderMentor(m, false)));
   function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  /* ── Persistence ── */
+  /* ── Persistence (localStorage) ── */
   function saveState() {
     try { localStorage.setItem('mentoring-grid', JSON.stringify(mentors)); } catch(e) {}
   }
