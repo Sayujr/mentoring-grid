@@ -624,7 +624,7 @@
     /* Quote tag (always-visible rectangle under bubble) */
     const tag = document.createElement('div');
     tag.className = 'q-tag' + (m.quote ? ' visible' : '');
-    tag.style.color = m.color;
+    tag.style.color = '#333';
     tag.style.borderTopColor = m.color;
     if (m.quote) tag.textContent = m.quote.length > 55 ? m.quote.slice(0, 52) + '…' : m.quote;
     el.appendChild(tag);
