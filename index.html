@@ -237,24 +237,42 @@
     .btn-danger { background: #e84545; color: white; }
     .btn-danger:hover { background: #c12e2e; }
 
-    /* ── Sync bar ── */
-    .sync-bar {
-      width: 100%;
-      background: #f0f6ff;
-      border-bottom: 1px solid #ccdcf5;
-      padding: 8px 20px;
-      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-      font-size: 0.78rem;
+    /* ── Sync corner widget ── */
+    #sync-widget {
+      position: fixed; bottom: 14px; left: 14px; z-index: 999;
+      font-family: 'Segoe UI', Arial, sans-serif;
     }
-    .sync-bar label { font-weight: 700; color: #1a3560; white-space: nowrap; }
-    .sync-bar input {
-      flex: 1; min-width: 200px;
-      border: 1.5px solid #a0bce8; border-radius: 7px;
-      padding: 5px 10px; font-size: 0.76rem; outline: none;
+    #sync-toggle {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #1a3560; color: white; border: none;
+      font-size: 1rem; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
     }
-    .sync-bar input:focus { border-color: #2d5fa6; }
-    #fb-status { font-weight: 700; white-space: nowrap; }
-    .sync-bar a { color: #2d5fa6; font-size: 0.72rem; white-space: nowrap; }
+    #sync-toggle:hover { background: #2d5fa6; }
+    #sync-toggle.connected { background: #1faa74; }
+    #sync-panel {
+      display: none;
+      position: absolute; bottom: 44px; left: 0;
+      background: white; border-radius: 12px;
+      box-shadow: 0 6px 28px rgba(0,0,0,0.18);
+      padding: 14px 16px; width: 290px;
+      font-size: 0.76rem; color: #333;
+      border: 1px solid #dde3ed;
+    }
+    #sync-panel.open { display: block; }
+    #sync-panel h4 { font-size: 0.8rem; color: #1a3560; margin-bottom: 10px; }
+    #sync-panel label { display: block; font-weight: 600; color: #555; margin-bottom: 3px; margin-top: 8px; font-size: 0.72rem; }
+    #sync-panel input {
+      width: 100%; border: 1.5px solid #c0c8d8; border-radius: 7px;
+      padding: 5px 8px; font-size: 0.74rem; outline: none; color: #333;
+    }
+    #sync-panel input:focus { border-color: #2d5fa6; }
+    #gh-status { font-size: 0.7rem; font-weight: 600; margin-top: 6px; display: block; }
+    #gh-share  { margin-top: 8px; background: #f0f6ff; border-radius: 7px; padding: 7px 9px; display: none; }
+    #gh-share strong { font-size: 0.7rem; word-break: break-all; color: #1a3560; }
+    #sync-panel a { color: #2d5fa6; font-size: 0.7rem; }
 
     .tip {
       font-size: 0.7rem; color: #9aa5b8;
@@ -371,13 +389,23 @@
   <button class="btn btn-save"  onclick="exportPng()">&#8595; Save PNG</button>
 </div>
 
-<!-- Live Sync bar -->
-<div class="sync-bar">
-  <label>⚡ Live Sync</label>
-  <input type="url" id="fb-url" placeholder="Paste Firebase Realtime Database URL  e.g. https://your-project-default-rtdb.firebaseio.com" />
-  <button class="btn btn-add" style="padding:5px 14px;font-size:0.78rem;" onclick="connectFirebase()">Connect</button>
-  <span id="fb-status" style="color:#aaa;">● not connected</span>
-  <a href="#" onclick="showFbHelp();return false;">Free 2-min setup ›</a>
+<!-- Sync corner widget (facilitator only) -->
+<div id="sync-widget">
+  <button id="sync-toggle" onclick="toggleSyncPanel()" title="Facilitator sync settings">⚙</button>
+  <div id="sync-panel">
+    <h4>⚡ Live Sync <span style="font-weight:400;color:#aaa;font-size:0.68rem;">(facilitator only)</span></h4>
+    <label>GitHub Token <a href="https://github.com/settings/tokens/new?scopes=gist&description=mentoring-grid" target="_blank">get one ›</a></label>
+    <input type="password" id="gh-token" placeholder="Token with gist scope"/>
+    <label>Session ID <span style="font-weight:400;color:#aaa;">(blank = new session)</span></label>
+    <input type="text" id="gh-gist" placeholder="Paste to join existing session"/>
+    <button class="btn btn-add" style="width:100%;margin-top:10px;font-size:0.78rem;" onclick="ghConnect()">Connect</button>
+    <span id="gh-status">● not connected</span>
+    <div id="gh-share">
+      Share this Session ID with participants:<br/>
+      <strong id="gh-gist-display"></strong><br/>
+      <button class="btn btn-clear" style="margin-top:6px;padding:3px 10px;font-size:0.7rem;" onclick="copySessionId()">Copy ID</button>
+    </div>
+  </div>
 </div>
 
 <!-- Slide -->
@@ -934,144 +962,160 @@
   window.clearAll = function() { _origClear(); refreshTable(); saveState(); };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
-  /* ── Firebase real-time sync ── */
-  let fbRef = null;
-  let myDragging = false;  // don't overwrite our own drag mid-flight
+  /* ── Private GitHub Gist sync ── */
+  /* Data stored in a SECRET gist — not publicly visible, no repo commits */
+  let ghToken     = null;
+  let gistId      = null;
+  let polling     = null;
+  let iAmDragging = false;
+  let writeTimer  = null;
 
-  function setStatus(msg, color) {
-    const el = document.getElementById('fb-status');
-    el.textContent = msg; el.style.color = color;
+  function toggleSyncPanel() {
+    document.getElementById('sync-panel').classList.toggle('open');
   }
 
-  function connectFirebase() {
-    const url = document.getElementById('fb-url').value.trim();
-    if (!url) { alert('Paste your Firebase Realtime Database URL first.'); return; }
-    localStorage.setItem('fb-url', url);
-    try {
-      const app = firebase.apps.length
-        ? firebase.app()
-        : firebase.initializeApp({ databaseURL: url });
-      const db = firebase.database(app);
-      fbRef = db.ref('mentoring-session');
+  function ghStatus(msg, color) {
+    const el = document.getElementById('gh-status');
+    el.textContent = msg; el.style.color = color || '#888';
+    // Turn toggle button green when connected
+    document.getElementById('sync-toggle').classList.toggle('connected', color === '#1faa74');
+  }
 
-      setStatus('⟳ Connecting…', '#f0a500');
+  async function ghConnect() {
+    const tok = document.getElementById('gh-token').value.trim();
+    if (!tok) { alert('Paste a GitHub token with "gist" scope — click "Get token ›".'); return; }
+    ghToken = tok;
+    localStorage.setItem('gh-token', tok);
+    ghStatus('⟳ Connecting…', '#f0a500');
 
-      fbRef.on('value', snap => {
-        if (myDragging) return;
-        const cloud = snap.val() || {};
-        const cloudIds = Object.keys(cloud);
-        const localIds = mentors.map(m => m.id);
+    const existingId = document.getElementById('gh-gist').value.trim()
+                    || localStorage.getItem('gh-gist');
 
-        // Remove bubbles deleted by others
-        localIds.filter(id => !cloudIds.includes(id)).forEach(id => {
-          mentors = mentors.filter(m => m.id !== id);
-          document.getElementById(id)?.remove();
+    if (existingId) {
+      // Join existing session
+      gistId = existingId;
+      document.getElementById('gh-gist').value = gistId;
+    } else {
+      // Create new private gist
+      try {
+        const res = await fetch('https://api.github.com/gists', {
+          method: 'POST',
+          headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: 'Mentoring Grid Session',
+            public: false,
+            files: { 'session-data.json': { content: '{}' } }
+          })
         });
-
-        // Add / update from cloud
-        cloudIds.forEach(id => {
-          const cm = cloud[id];
-          cm.snapshot = localStorage.getItem('snap-' + id) || null;
-          const existing = mentors.find(m => m.id === id);
-          if (existing) {
-            Object.assign(existing, cm);
-            renderMentor(existing, false);
-          } else {
-            mentors.push(cm);
-            renderMentor(cm, true);
-          }
-        });
-
-        refreshTable();
-        setStatus('● Live — ' + cloudIds.length + ' on grid', '#1faa74');
-      }, err => setStatus('✗ ' + err.message, '#e84545'));
-
-    } catch(e) { setStatus('✗ ' + e.message, '#e84545'); }
-  }
-
-  function fbPush(m) {
-    if (!fbRef) return;
-    const { snapshot, ...data } = m;
-    fbRef.child(m.id).set(data);
-    if (snapshot) localStorage.setItem('snap-' + m.id, snapshot);
-  }
-
-  function fbRemove(id) {
-    fbRef?.child(id).remove();
-    localStorage.removeItem('snap-' + id);
-  }
-
-  /* Patch drag to set myDragging flag and push on drop */
-  const _baseRender = renderMentor;
-  renderMentor = function(m, anim) {
-    _baseRender(m, anim);
-    const el = document.getElementById(m.id);
-    if (!el) return;
-    el.addEventListener('pointerdown', () => { myDragging = true; });
-    el.addEventListener('pointerup',   () => {
-      myDragging = false;
-      fbPush(m);
-      refreshTable();
-    });
-  };
-
-  /* Patch add / save / remove / clear to push to Firebase */
-  const _fbOrigAdd = window.addMentor;
-  window.addMentor = function() {
-    _fbOrigAdd();
-    const m = mentors[mentors.length - 1];
-    if (m) fbPush(m);
-  };
-
-  const _fbOrigSave = window.saveQuote;
-  window.saveQuote = function() {
-    _fbOrigSave();
-    const m = mentors.find(m => m.id === activeId) || mentors[mentors.length - 1];
-    if (m) fbPush(m);
-  };
-
-  const _fbOrigRemove = window.removeMentor;
-  window.removeMentor = function(id) { _fbOrigRemove(id); fbRemove(id); };
-
-  const _fbOrigClear = window.clearAll;
-  window.clearAll = function() { _fbOrigClear(); fbRef?.set(null); };
-
-  /* Restore saved URL on load */
-  window.addEventListener('load', () => {
-    const saved = localStorage.getItem('fb-url');
-    if (saved) {
-      document.getElementById('fb-url').value = saved;
-      connectFirebase();
+        if (!res.ok) throw new Error('Could not create gist — check token has gist scope.');
+        const j = await res.json();
+        gistId = j.id;
+      } catch(e) { ghStatus('✗ ' + e.message, '#e84545'); return; }
     }
+
+    localStorage.setItem('gh-gist', gistId);
+    document.getElementById('gh-gist').value = gistId;
+    showShareRow();
+
+    await ghPoll();
+    if (polling) clearInterval(polling);
+    polling = setInterval(ghPoll, 5000);
+  }
+
+  function showShareRow() {
+    const row = document.getElementById('gh-share');
+    row.style.display = 'inline-flex';
+    document.getElementById('gh-gist-display').textContent = gistId;
+  }
+
+  function copySessionId() {
+    navigator.clipboard.writeText(gistId).then(() => {
+      const btn = event.target;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+
+  /* Poll gist — requires auth (secret gist) */
+  async function ghPoll() {
+    if (!ghToken || !gistId) return;
+    try {
+      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: { Authorization: `token ${ghToken}` }
+      });
+      if (!res.ok) throw new Error('poll failed');
+      const j    = await res.json();
+      const raw  = j.files?.['session-data.json']?.content || '{}';
+      mergeCloud(JSON.parse(raw));
+      const n = Object.keys(JSON.parse(raw)).length;
+      ghStatus(`● live — ${n} on grid`, '#1faa74');
+    } catch(e) { ghStatus('✗ sync error', '#e84545'); }
+  }
+
+  function mergeCloud(cloud) {
+    if (iAmDragging) return;
+    const cloudIds = Object.keys(cloud);
+    const localIds = mentors.map(m => m.id);
+
+    localIds.filter(id => !cloudIds.includes(id)).forEach(id => {
+      mentors = mentors.filter(m => m.id !== id);
+      document.getElementById(id)?.remove();
+    });
+    cloudIds.forEach(id => {
+      const cm = { ...cloud[id], snapshot: localStorage.getItem('snap-' + id) || null };
+      const ex = mentors.find(m => m.id === id);
+      if (ex) { Object.assign(ex, cm); renderMentor(ex, false); }
+      else     { mentors.push(cm);     renderMentor(cm, true);  }
+    });
+    refreshTable();
+  }
+
+  /* Write gist — simple PATCH, no SHA needed */
+  function scheduleWrite() {
+    if (!ghToken || !gistId) return;
+    clearTimeout(writeTimer);
+    writeTimer = setTimeout(ghWrite, 2000);
+  }
+
+  async function ghWrite() {
+    if (!ghToken || !gistId) return;
+    const payload = {};
+    mentors.forEach(({ snapshot, ...m }) => { payload[m.id] = m; });
+    try {
+      await fetch(`https://api.github.com/gists/${gistId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files: { 'session-data.json': { content: JSON.stringify(payload, null, 2) } }
+        })
+      });
+    } catch(e) {}
+  }
+
+  /* Hook into all data-change points */
+  const _gOA = window.addMentor, _gOS = window.saveQuote,
+        _gOR = window.removeMentor, _gOC = window.clearAll;
+  window.addMentor    = function()   { _gOA();    scheduleWrite(); };
+  window.saveQuote    = function()   { _gOS();    scheduleWrite(); };
+  window.removeMentor = function(id) { _gOR(id);  scheduleWrite(); };
+  window.clearAll     = function()   { _gOC();    scheduleWrite(); };
+
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('.mentor-avatar')) iAmDragging = true;
+  });
+  document.addEventListener('pointerup', () => {
+    if (iAmDragging) { iAmDragging = false; scheduleWrite(); }
   });
 
-  /* ── Firebase help modal ── */
-  function showFbHelp() {
-    document.getElementById('fb-help-modal').classList.add('open');
-  }
+  /* Auto-restore on load */
+  window.addEventListener('load', () => {
+    const tok = localStorage.getItem('gh-token');
+    const gid = localStorage.getItem('gh-gist');
+    if (tok) document.getElementById('gh-token').value = tok;
+    if (gid) document.getElementById('gh-gist').value  = gid;
+    if (tok && gid) ghConnect();
+  });
 </script>
-
-<!-- Firebase setup help modal -->
-<div class="modal-bg" id="fb-help-modal">
-  <div class="modal" style="max-width:520px;">
-    <h2>⚡ Free Live Sync Setup (2 mins)</h2>
-    <p style="margin-bottom:14px;">One person sets this up — everyone shares the same URL.</p>
-    <ol style="font-size:0.8rem;line-height:2;color:#444;padding-left:18px;">
-      <li>Go to <strong>console.firebase.google.com</strong> → <em>Add project</em> (any name, disable Analytics)</li>
-      <li>Click <strong>Realtime Database</strong> in the left menu → <em>Create database</em></li>
-      <li>Choose <em>Start in test mode</em> → Next → Done</li>
-      <li>Copy the URL shown (looks like <code>https://your-project-default-rtdb.firebaseio.com</code>)</li>
-      <li>Paste it into the <strong>Live Sync</strong> bar and click <strong>Connect</strong></li>
-      <li>Share the page URL with participants — they paste the same Firebase URL to join</li>
-    </ol>
-    <p style="font-size:0.72rem;color:#999;margin-top:12px;">Free tier supports 100 simultaneous connections and 1 GB storage — more than enough for any session.</p>
-    <div class="modal-actions">
-      <button class="btn btn-add" onclick="document.getElementById('fb-help-modal').classList.remove('open')">Got it</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>
