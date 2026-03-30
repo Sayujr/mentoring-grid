@@ -345,6 +345,21 @@
       background: #e8f0fb; color: #2d5fa6;
     }
 
+    /* ── Delete button ── */
+    .del-btn {
+      position: absolute; top: -7px; left: -7px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #e84545; color: white;
+      font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 11;
+      border: 2px solid white;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      opacity: 0; transition: opacity 0.15s, transform 0.15s;
+    }
+    .mentor-avatar:hover .del-btn { opacity: 1; }
+    .del-btn:hover { transform: scale(1.2); }
+
     /* ── Quote tag under bubble ── */
     .q-tag {
       position: absolute;
@@ -666,6 +681,15 @@
     badge.addEventListener('pointerdown', e => e.stopPropagation());
     badge.addEventListener('click', e => { e.stopPropagation(); openModal(m.id); });
     el.appendChild(badge);
+
+    /* Delete button */
+    const del = document.createElement('div');
+    del.className = 'del-btn';
+    del.textContent = '✕';
+    del.title = 'Remove';
+    del.addEventListener('pointerdown', e => e.stopPropagation());
+    del.addEventListener('click', e => { e.stopPropagation(); removeMentor(m.id); });
+    el.appendChild(del);
 
     /* Initials label */
     const lbl = document.createElement('span');
@@ -1044,17 +1068,34 @@
 
   function fbPush(m) {
     if (!fbRef) return;
-    const { snapshot, ...data } = m;
+    // Strip all snapshot blobs — stored locally only, too large for Firebase
+    const { snapshot, quoteHistory, ...data } = m;
+    data.quoteHistory = (quoteHistory || []).map(({ snapshot: _s, ...h }) => h);
     fbRef.child(m.id).set(data);
   }
 
   /* Hook all data changes → Firebase */
-  const _fOA = window.addMentor, _fOS = window.saveQuote,
-        _fOR = window.removeMentor, _fOC = window.clearAll;
-  window.addMentor    = function()   { _fOA(); const m = mentors[mentors.length-1]; if(m) fbPush(m); };
-  window.saveQuote    = function()   { _fOS(); const m = mentors.find(m=>m.id===activeId); if(m) fbPush(m); };
+  const _fOA = window.addMentor, _fOR = window.removeMentor, _fOC = window.clearAll;
+  const _fOS = window.saveQuote; // capture current saveQuote (which already handles snapshot/table)
+
+  window.addMentor = function() {
+    _fOA();
+    const m = mentors[mentors.length - 1];
+    if (m) fbPush(m);
+  };
+
+  // Fix: capture id BEFORE calling _fOS (which nulls activeId via closeModal)
+  window.saveQuote = function() {
+    const id = activeId;                          // capture before closeModal() clears it
+    _fOS();                                       // saves quote, captures snapshot, refreshes table
+    const m = mentors.find(m => m.id === id);
+    if (!m) return;
+    // Wait for snapshot capture (async inside _fOS) then push clean data
+    setTimeout(() => fbPush(m), 2200);
+  };
+
   window.removeMentor = function(id) { _fOR(id); fbRef?.child(id).remove(); };
-  window.clearAll     = function()   { _fOC(); fbRef?.set(null); };
+  window.clearAll     = function()   { _fOC();   fbRef?.set(null); };
 
   /* Push position after drag ends */
   document.addEventListener('pointerdown', e => { if (e.target.closest('.mentor-avatar')) fbDragging = true; });
