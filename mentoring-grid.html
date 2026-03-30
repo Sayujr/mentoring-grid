@@ -755,6 +755,19 @@
   window.addEventListener('resize', () => mentors.forEach(m => renderMentor(m, false)));
   function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  /* ── Persistence ── */
+  function saveState() {
+    try { localStorage.setItem('mentoring-grid', JSON.stringify(mentors)); } catch(e) {}
+  }
+  function loadState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('mentoring-grid') || '[]');
+      saved.forEach(m => { mentors.push(m); renderMentor(m, false); });
+      if (mentors.length) refreshTable();
+    } catch(e) {}
+  }
+  loadState();
+
   /* ── Collapsible data panel ── */
   function toggleDataPanel() {
     const body = document.getElementById('data-body');
@@ -854,40 +867,43 @@
     _origAdd();
     if (mentors.length) {
       const m = mentors[mentors.length - 1];
+      saveState();
       captureSnapshot().then(snap => {
         m.snapshot = snap;
         refreshTable();
         pushToSheets(m);
+        saveState();
       });
     }
   };
 
-  // Override saveQuote to update snapshot + table + sheets on quote save
   window.saveQuote = function() {
     if (!activeId) return;
     const m = mentors.find(m => m.id === activeId);
     m.quote = document.getElementById('modal-text').value.trim();
     closeModal();
     renderMentor(m, false);
+    saveState();
     captureSnapshot().then(snap => {
       m.snapshot = snap;
       refreshTable();
       pushToSheets(m);
+      saveState();
     });
   };
 
-  // Also refresh table on drag end — debounced
+  // Refresh table + save on drag end — debounced
   let _tableTimer;
   document.addEventListener('pointerup', () => {
     clearTimeout(_tableTimer);
-    _tableTimer = setTimeout(refreshTable, 400);
+    _tableTimer = setTimeout(() => { refreshTable(); saveState(); }, 400);
   });
 
   // Override removeMentor + clearAll to keep table in sync
   const _origRemove = removeMentor;
-  window.removeMentor = function(id) { _origRemove(id); refreshTable(); };
+  window.removeMentor = function(id) { _origRemove(id); refreshTable(); saveState(); };
   const _origClear = clearAll;
-  window.clearAll = function() { _origClear(); refreshTable(); };
+  window.clearAll = function() { _origClear(); refreshTable(); saveState(); };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </body>
