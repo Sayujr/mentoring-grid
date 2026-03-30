@@ -237,6 +237,25 @@
     .btn-danger { background: #e84545; color: white; }
     .btn-danger:hover { background: #c12e2e; }
 
+    /* ── Sync bar ── */
+    .sync-bar {
+      width: 100%;
+      background: #f0f6ff;
+      border-bottom: 1px solid #ccdcf5;
+      padding: 8px 20px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      font-size: 0.78rem;
+    }
+    .sync-bar label { font-weight: 700; color: #1a3560; white-space: nowrap; }
+    .sync-bar input {
+      flex: 1; min-width: 200px;
+      border: 1.5px solid #a0bce8; border-radius: 7px;
+      padding: 5px 10px; font-size: 0.76rem; outline: none;
+    }
+    .sync-bar input:focus { border-color: #2d5fa6; }
+    #fb-status { font-weight: 700; white-space: nowrap; }
+    .sync-bar a { color: #2d5fa6; font-size: 0.72rem; white-space: nowrap; }
+
     .tip {
       font-size: 0.7rem; color: #9aa5b8;
       text-align: center; padding: 0 16px 8px;
@@ -350,6 +369,15 @@
   <button class="btn btn-add"   onclick="addMentor()">+ Place Me</button>
   <button class="btn btn-clear" onclick="clearAll()">Clear All</button>
   <button class="btn btn-save"  onclick="exportPng()">&#8595; Save PNG</button>
+</div>
+
+<!-- Live Sync bar -->
+<div class="sync-bar">
+  <label>⚡ Live Sync</label>
+  <input type="url" id="fb-url" placeholder="Paste Firebase Realtime Database URL  e.g. https://your-project-default-rtdb.firebaseio.com" />
+  <button class="btn btn-add" style="padding:5px 14px;font-size:0.78rem;" onclick="connectFirebase()">Connect</button>
+  <span id="fb-status" style="color:#aaa;">● not connected</span>
+  <a href="#" onclick="showFbHelp();return false;">Free 2-min setup ›</a>
 </div>
 
 <!-- Slide -->
@@ -906,5 +934,144 @@
   window.clearAll = function() { _origClear(); refreshTable(); saveState(); };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+  /* ── Firebase real-time sync ── */
+  let fbRef = null;
+  let myDragging = false;  // don't overwrite our own drag mid-flight
+
+  function setStatus(msg, color) {
+    const el = document.getElementById('fb-status');
+    el.textContent = msg; el.style.color = color;
+  }
+
+  function connectFirebase() {
+    const url = document.getElementById('fb-url').value.trim();
+    if (!url) { alert('Paste your Firebase Realtime Database URL first.'); return; }
+    localStorage.setItem('fb-url', url);
+    try {
+      const app = firebase.apps.length
+        ? firebase.app()
+        : firebase.initializeApp({ databaseURL: url });
+      const db = firebase.database(app);
+      fbRef = db.ref('mentoring-session');
+
+      setStatus('⟳ Connecting…', '#f0a500');
+
+      fbRef.on('value', snap => {
+        if (myDragging) return;
+        const cloud = snap.val() || {};
+        const cloudIds = Object.keys(cloud);
+        const localIds = mentors.map(m => m.id);
+
+        // Remove bubbles deleted by others
+        localIds.filter(id => !cloudIds.includes(id)).forEach(id => {
+          mentors = mentors.filter(m => m.id !== id);
+          document.getElementById(id)?.remove();
+        });
+
+        // Add / update from cloud
+        cloudIds.forEach(id => {
+          const cm = cloud[id];
+          cm.snapshot = localStorage.getItem('snap-' + id) || null;
+          const existing = mentors.find(m => m.id === id);
+          if (existing) {
+            Object.assign(existing, cm);
+            renderMentor(existing, false);
+          } else {
+            mentors.push(cm);
+            renderMentor(cm, true);
+          }
+        });
+
+        refreshTable();
+        setStatus('● Live — ' + cloudIds.length + ' on grid', '#1faa74');
+      }, err => setStatus('✗ ' + err.message, '#e84545'));
+
+    } catch(e) { setStatus('✗ ' + e.message, '#e84545'); }
+  }
+
+  function fbPush(m) {
+    if (!fbRef) return;
+    const { snapshot, ...data } = m;
+    fbRef.child(m.id).set(data);
+    if (snapshot) localStorage.setItem('snap-' + m.id, snapshot);
+  }
+
+  function fbRemove(id) {
+    fbRef?.child(id).remove();
+    localStorage.removeItem('snap-' + id);
+  }
+
+  /* Patch drag to set myDragging flag and push on drop */
+  const _baseRender = renderMentor;
+  renderMentor = function(m, anim) {
+    _baseRender(m, anim);
+    const el = document.getElementById(m.id);
+    if (!el) return;
+    el.addEventListener('pointerdown', () => { myDragging = true; });
+    el.addEventListener('pointerup',   () => {
+      myDragging = false;
+      fbPush(m);
+      refreshTable();
+    });
+  };
+
+  /* Patch add / save / remove / clear to push to Firebase */
+  const _fbOrigAdd = window.addMentor;
+  window.addMentor = function() {
+    _fbOrigAdd();
+    const m = mentors[mentors.length - 1];
+    if (m) fbPush(m);
+  };
+
+  const _fbOrigSave = window.saveQuote;
+  window.saveQuote = function() {
+    _fbOrigSave();
+    const m = mentors.find(m => m.id === activeId) || mentors[mentors.length - 1];
+    if (m) fbPush(m);
+  };
+
+  const _fbOrigRemove = window.removeMentor;
+  window.removeMentor = function(id) { _fbOrigRemove(id); fbRemove(id); };
+
+  const _fbOrigClear = window.clearAll;
+  window.clearAll = function() { _fbOrigClear(); fbRef?.set(null); };
+
+  /* Restore saved URL on load */
+  window.addEventListener('load', () => {
+    const saved = localStorage.getItem('fb-url');
+    if (saved) {
+      document.getElementById('fb-url').value = saved;
+      connectFirebase();
+    }
+  });
+
+  /* ── Firebase help modal ── */
+  function showFbHelp() {
+    document.getElementById('fb-help-modal').classList.add('open');
+  }
+</script>
+
+<!-- Firebase setup help modal -->
+<div class="modal-bg" id="fb-help-modal">
+  <div class="modal" style="max-width:520px;">
+    <h2>⚡ Free Live Sync Setup (2 mins)</h2>
+    <p style="margin-bottom:14px;">One person sets this up — everyone shares the same URL.</p>
+    <ol style="font-size:0.8rem;line-height:2;color:#444;padding-left:18px;">
+      <li>Go to <strong>console.firebase.google.com</strong> → <em>Add project</em> (any name, disable Analytics)</li>
+      <li>Click <strong>Realtime Database</strong> in the left menu → <em>Create database</em></li>
+      <li>Choose <em>Start in test mode</em> → Next → Done</li>
+      <li>Copy the URL shown (looks like <code>https://your-project-default-rtdb.firebaseio.com</code>)</li>
+      <li>Paste it into the <strong>Live Sync</strong> bar and click <strong>Connect</strong></li>
+      <li>Share the page URL with participants — they paste the same Firebase URL to join</li>
+    </ol>
+    <p style="font-size:0.72rem;color:#999;margin-top:12px;">Free tier supports 100 simultaneous connections and 1 GB storage — more than enough for any session.</p>
+    <div class="modal-actions">
+      <button class="btn btn-add" onclick="document.getElementById('fb-help-modal').classList.remove('open')">Got it</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
