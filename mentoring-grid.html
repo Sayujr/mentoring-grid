@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Two Dimensions of Mentoring Practice</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f3f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Controls bar ── */
+    .controls {
+      width: 100%;
+      background: white;
+      border-bottom: 1px solid #d8dfe9;
+      padding: 10px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .controls label { font-size: 0.82rem; font-weight: 600; color: #444; }
+    .controls input[type="text"] {
+      width: 86px; border: 1.5px solid #c0c8d8; border-radius: 8px;
+      padding: 6px 10px; font-size: 1rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      outline: none; color: #1a3560;
+    }
+    .controls input[type="text"]:focus { border-color: #2d5fa6; }
+    .controls input[type="color"] {
+      width: 32px; height: 32px; border: none; background: none;
+      cursor: pointer; border-radius: 50%; padding: 0;
+    }
+    .preview-wrap { display: flex; align-items: center; gap: 6px; }
+    .preview-label { font-size: 0.72rem; color: #888; }
+    .preview-bubble {
+      width: 40px; height: 40px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.74rem; font-weight: 800; color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      border: 2px solid rgba(255,255,255,0.5);
+      letter-spacing: 0.04em; transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .divider { width: 1px; height: 28px; background: #dde3ed; }
+    .btn {
+      padding: 7px 16px; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 0.82rem; font-weight: 700;
+      letter-spacing: 0.03em; transition: background 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-add   { background: #2d5fa6; color: white; }
+    .btn-add:hover { background: #1d4a8a; }
+    .btn-clear { background: #edf0f7; color: #555; }
+    .btn-clear:hover { background: #dce2ef; }
+    .btn-save  { background: #1faa74; color: white; }
+    .btn-save:hover { background: #178a5e; }
+
+    /* ── Slide wrapper ── */
+    .slide-wrap {
+      width: min(96vw, 960px);
+      margin: 24px auto 16px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 6px 36px rgba(0,0,0,0.12);
+      padding: 28px 32px 32px;
+    }
+
+    /* Slide title */
+    .slide-title {
+      font-size: 1.25rem;
+      font-style: italic;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 20px;
+    }
+
+    /* ── Grid layout: v-label | plot | (nothing) ── */
+    .grid-layout {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    /* Vertical axis label */
+    .v-axis {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 52px;
+      padding-right: 10px;
+    }
+    .v-axis-inner {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      text-align: center;
+    }
+    .v-axis-inner strong { font-size: 0.78rem; font-weight: 700; color: #1a3560; letter-spacing: 0.05em; }
+    .v-axis-inner span   { font-size: 0.65rem; color: #6a80a8; display: block; margin-top: 4px; }
+
+    /* Grid column: h-title + plot */
+    .grid-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+
+    .h-axis { text-align: center; }
+    .h-axis strong { font-size: 0.78rem; font-weight: 700; color: #1a3560; letter-spacing: 0.05em; }
+    .h-axis span   { font-size: 0.65rem; color: #6a80a8; display: block; margin-top: 2px; }
+
+    /* ── Plot ── */
+    #plot {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      max-height: 58vh;
+    }
+
+    /* SVG covers full plot */
+    .axes-svg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none; overflow: visible;
+    }
+
+    /* End labels */
+    .end-label {
+      position: absolute;
+      font-size: clamp(0.62rem, 1.1vw, 0.76rem);
+      font-weight: 700; color: #1a3560;
+      line-height: 1.3; pointer-events: none; z-index: 2;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .end-label.top    { top: 6px;    left: 50%; transform: translateX(-50%); text-align: center; }
+    .end-label.bottom { bottom: 6px; left: 50%; transform: translateX(-50%); text-align: center; }
+    .end-label.left   { left: 6px;   top: 50%;  transform: translateY(-50%); text-align: left;  align-items: flex-start; }
+    .end-label.right  { right: 6px;  top: 50%;  transform: translateY(-50%); text-align: right; align-items: flex-end; }
+
+    /* Icons in end labels */
+    .icon { font-size: 1.4em; line-height: 1; }
+
+    /* Quote box (top-right quadrant placeholder) */
+    .quote-placeholder {
+      position: absolute;
+      top: 6%; right: 4%;
+      width: 28%; max-width: 170px;
+      border: 1.8px solid #bbb;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 0.72rem;
+      color: #555;
+      line-height: 1.5;
+      background: white;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* ── Mentor avatar ── */
+    .mentor-avatar {
+      position: absolute;
+      width: 46px; height: 46px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.76rem; font-weight: 800; color: white;
+      cursor: grab; user-select: none; touch-action: none;
+      z-index: 10;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.22);
+      border: 2.5px solid rgba(255,255,255,0.55);
+      letter-spacing: 0.04em;
+      transition: box-shadow 0.15s, transform 0.15s;
+    }
+    .mentor-avatar:hover  { transform: scale(1.1);   box-shadow: 0 6px 18px rgba(0,0,0,0.28); }
+    .mentor-avatar.drag   { cursor: grabbing; transform: scale(1.14); z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: none; }
+    .mentor-avatar.popin  { animation: popin 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+    @keyframes popin { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    /* Quote star badge */
+    .q-badge {
+      position: absolute; top: -7px; right: -7px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #f0c040; font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 11;
+      border: 2px solid white;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      transition: transform 0.15s;
+    }
+    .q-badge:hover { transform: scale(1.2); }
+    .q-badge.filled { background: #2d5fa6; color: white; }
+
+    /* Quote popup (callout) */
+    .q-popup {
+      position: absolute;
+      background: white;
+      border: 1.5px solid #dde3ed; border-radius: 11px;
+      padding: 10px 13px 9px;
+      width: 190px; font-size: 0.74rem;
+      color: #333; line-height: 1.55;
+      box-shadow: 0 6px 22px rgba(0,0,0,0.13);
+      z-index: 300; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s, transform 0.15s;
+      transform: translateY(4px);
+    }
+    .q-popup.show { opacity: 1; transform: translateY(0); }
+    .q-mark  { font-size: 1.5rem; color: #2d5fa6; line-height: 0.5; display: block; margin-bottom: 6px; }
+    .q-author { margin-top: 6px; font-weight: 700; font-size: 0.7rem; color: #1a3560; }
+
+    /* ── Modal ── */
+    .modal-bg {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4); z-index: 500;
+      align-items: center; justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: white; border-radius: 16px;
+      padding: 26px 26px 20px;
+      width: min(92vw, 420px);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.22);
+    }
+    .modal h2 { font-size: 1rem; color: #1a3560; margin-bottom: 4px; }
+    .modal p  { font-size: 0.76rem; color: #777; margin-bottom: 12px; }
+    .modal textarea {
+      width: 100%; border: 1.5px solid #c0c8d8; border-radius: 8px;
+      padding: 9px 11px; font-size: 0.85rem; font-family: inherit;
+      resize: vertical; min-height: 84px; outline: none; line-height: 1.5;
+    }
+    .modal textarea:focus { border-color: #2d5fa6; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+    .btn-danger { background: #e84545; color: white; }
+    .btn-danger:hover { background: #c12e2e; }
+
+    .tip {
+      font-size: 0.7rem; color: #9aa5b8;
+      text-align: center; padding: 0 16px 8px;
+    }
+    .tip kbd {
+      background: #f0f2f7; border: 1px solid #ccc;
+      border-radius: 3px; padding: 1px 4px; font-size: 0.66rem;
+    }
+    footer { font-size: 0.68rem; color: #b0b8c8; padding: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- Controls -->
+<div class="controls">
+  <label for="inp">Initials</label>
+  <input type="text" id="inp" maxlength="3" placeholder="e.g. JS" autocomplete="off"/>
+  <label for="col">Color</label>
+  <input type="color" id="col" value="#2d5fa6"/>
+  <div class="preview-wrap">
+    <span class="preview-label">Preview:</span>
+    <div class="preview-bubble" id="preview">?</div>
+  </div>
+  <div class="divider"></div>
+  <button class="btn btn-add"   onclick="addMentor()">+ Place Me</button>
+  <button class="btn btn-clear" onclick="clearAll()">Clear All</button>
+  <button class="btn btn-save"  onclick="exportPng()">&#8595; Save PNG</button>
+</div>
+
+<!-- Slide -->
+<div class="slide-wrap" id="slide">
+  <div class="slide-title">Two Dimensions of Mentoring Practice</div>
+
+  <div class="grid-layout">
+
+    <!-- Vertical axis label -->
+    <div class="v-axis">
+      <div class="v-axis-inner">
+        <strong>Focus of Mentoring</strong>
+        <span>(What is included in the interaction)</span>
+      </div>
+    </div>
+
+    <!-- Plot column -->
+    <div class="grid-col">
+
+      <!-- Horizontal axis label -->
+      <div class="h-axis">
+        <strong>Mode of Mentoring</strong>
+        <span>(Relationship between mentor and novice)</span>
+      </div>
+
+      <!-- The plot -->
+      <div id="plot">
+
+        <!-- CSS Axes (no SVG distortion) -->
+        <!-- Horizontal axis line -->
+        <div style="position:absolute;top:50%;left:8%;right:8%;height:1.5px;background:#1a3560;transform:translateY(-50%);pointer-events:none;z-index:1;">
+          <!-- left arrow -->
+          <div style="position:absolute;left:-7px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:8px solid #1a3560;"></div>
+          <!-- right arrow -->
+          <div style="position:absolute;right:-7px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid #1a3560;"></div>
+        </div>
+        <!-- Vertical axis line -->
+        <div style="position:absolute;left:50%;top:8%;bottom:8%;width:1.5px;background:#1a3560;transform:translateX(-50%);pointer-events:none;z-index:1;">
+          <!-- up arrow -->
+          <div style="position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #1a3560;"></div>
+          <!-- down arrow -->
+          <div style="position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid #1a3560;"></div>
+        </div>
+
+        <!-- End labels with icons matching original image -->
+        <div class="end-label top">
+          <span>Collaborative</span>
+          <!-- People holding hands (collaborative) -->
+          <svg width="36" height="26" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="15" cy="8" r="5" stroke="#333" stroke-width="2"/>
+            <circle cx="45" cy="8" r="5" stroke="#333" stroke-width="2"/>
+            <circle cx="30" cy="6" r="5" stroke="#333" stroke-width="2"/>
+            <path d="M10 20 Q15 15 20 20 L20 36 L10 36 Z" stroke="#333" stroke-width="1.8" fill="none"/>
+            <path d="M40 20 Q45 15 50 20 L50 36 L40 36 Z" stroke="#333" stroke-width="1.8" fill="none"/>
+            <path d="M22 22 Q30 16 38 22 L38 36 L22 36 Z" stroke="#333" stroke-width="1.8" fill="none"/>
+            <path d="M20 26 L22 26 M38 26 L40 26" stroke="#333" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <div class="end-label bottom">
+          <!-- Directive: one person with arrow to another -->
+          <svg width="40" height="28" viewBox="0 0 70 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="8" r="5" stroke="#333" stroke-width="2"/>
+            <path d="M7 20 Q12 14 17 20 L17 38 L7 38 Z" stroke="#333" stroke-width="1.8" fill="none"/>
+            <circle cx="58" cy="8" r="5" stroke="#333" stroke-width="2"/>
+            <path d="M53 20 Q58 14 63 20 L63 38 L53 38 Z" stroke="#333" stroke-width="1.8" fill="none"/>
+            <path d="M20 29 L50 29" stroke="#333" stroke-width="2" stroke-linecap="round" marker-end="url(#sm-arrow)"/>
+            <defs><marker id="sm-arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0.5 L4,2.5 L0,4.5" fill="#333"/></marker></defs>
+          </svg>
+          <span>Directive</span>
+        </div>
+
+        <div class="end-label left">
+          <!-- Teacher at board icon -->
+          <svg width="38" height="38" viewBox="0 0 58 58" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="36" height="24" rx="2" stroke="#333" stroke-width="2"/>
+            <line x1="2" y1="30" x2="38" y2="30" stroke="#333" stroke-width="2"/>
+            <line x1="20" y1="30" x2="20" y2="36" stroke="#333" stroke-width="2"/>
+            <line x1="12" y1="36" x2="28" y2="36" stroke="#333" stroke-width="2"/>
+            <circle cx="48" cy="10" r="5" stroke="#333" stroke-width="2"/>
+            <path d="M43 22 Q48 16 53 22 L53 40 L43 40 Z" stroke="#333" stroke-width="1.8" fill="none"/>
+            <line x1="43" y1="14" x2="38" y2="18" stroke="#333" stroke-width="1.5"/>
+            <circle cx="42" cy="8"  r="2" fill="#333" opacity="0.6"/>
+            <circle cx="42" cy="13" r="2" fill="#333" opacity="0.6"/>
+            <circle cx="42" cy="18" r="2" fill="#333" opacity="0.6"/>
+          </svg>
+          <span>Visible Acts<br>of Teaching</span>
+        </div>
+
+        <div class="end-label right">
+          <span>Reasoning about<br>Acts of Teaching</span>
+          <!-- Brain with circuit icon -->
+          <svg width="42" height="38" viewBox="0 0 64 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20 38 C8 36 4 26 8 18 C10 10 18 6 26 8 C28 4 34 2 40 6 C48 4 56 12 54 22 C58 28 56 38 46 40 C44 46 36 48 30 44 C24 48 16 46 20 38 Z" stroke="#333" stroke-width="2" fill="none"/>
+            <line x1="32" y1="8"  x2="32" y2="14" stroke="#333" stroke-width="1.5"/>
+            <line x1="32" y1="14" x2="42" y2="14" stroke="#333" stroke-width="1.5"/>
+            <line x1="42" y1="14" x2="42" y2="24" stroke="#333" stroke-width="1.5"/>
+            <line x1="32" y1="14" x2="22" y2="22" stroke="#333" stroke-width="1.5"/>
+            <line x1="22" y1="22" x2="32" y2="30" stroke="#333" stroke-width="1.5"/>
+            <line x1="32" y1="30" x2="42" y2="24" stroke="#333" stroke-width="1.5"/>
+            <circle cx="32" cy="8"  r="2.5" fill="#333"/>
+            <circle cx="42" cy="14" r="2.5" fill="#333"/>
+            <circle cx="22" cy="22" r="2.5" fill="#333"/>
+            <circle cx="42" cy="24" r="2.5" fill="#333"/>
+            <circle cx="32" cy="30" r="2.5" fill="#333"/>
+            <!-- Magnifier -->
+            <circle cx="54" cy="44" r="7" stroke="#333" stroke-width="2" fill="none"/>
+            <line x1="59" y1="49" x2="64" y2="54" stroke="#333" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <!-- Quote placeholder box (top-right quadrant, matching original image) -->
+        <div class="quote-placeholder" id="quote-placeholder">
+          Add a quote that supports where you see yourself on the graphic.
+        </div>
+
+      </div><!-- /plot -->
+    </div><!-- /grid-col -->
+  </div><!-- /grid-layout -->
+</div><!-- /slide-wrap -->
+
+<p class="tip">
+  Drag your bubble anywhere &nbsp;·&nbsp; Click <kbd>★</kbd> to add a quote &nbsp;·&nbsp; Hover to read quotes &nbsp;·&nbsp; Double-click to remove
+</p>
+<footer>All data stays in your browser</footer>
+
+<!-- Modal -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h2 id="modal-title">Add Your Quote</h2>
+    <p>Add a quote that supports where you see yourself on the grid.</p>
+    <textarea id="modal-text" placeholder="Type your quote here…"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-danger"  onclick="deleteCurrent()">Remove</button>
+      <button class="btn btn-clear"   onclick="closeModal()">Cancel</button>
+      <button class="btn btn-add"     onclick="saveQuote()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const plot    = document.getElementById('plot');
+  const inpEl   = document.getElementById('inp');
+  const colEl   = document.getElementById('col');
+  const preview = document.getElementById('preview');
+  const qph     = document.getElementById('quote-placeholder');
+
+  let mentors = [];
+  let activeId = null;
+  const SIZE = 46;
+
+  /* ── Live preview ── */
+  function updatePreview() {
+    preview.textContent = inpEl.value.trim().toUpperCase() || '?';
+    preview.style.background = colEl.value;
+  }
+  inpEl.addEventListener('input', updatePreview);
+  colEl.addEventListener('input', updatePreview);
+  inpEl.addEventListener('keydown', e => { if (e.key === 'Enter') addMentor(); });
+
+  /* ── Add ── */
+  function addMentor() {
+    const initials = inpEl.value.trim().toUpperCase();
+    if (!initials) {
+      inpEl.focus(); inpEl.style.borderColor = '#e84545';
+      setTimeout(() => inpEl.style.borderColor = '', 800); return;
+    }
+    const color = colEl.value;
+    const id = 'm' + Date.now();
+
+    /* Stagger starting positions across the 4 quadrants */
+    const spots = [{x:28,y:28},{x:72,y:28},{x:28,y:72},{x:72,y:72},{x:50,y:50}];
+    const base = spots[mentors.length % spots.length];
+    const x = Math.min(90, Math.max(10, base.x + (Math.random()-0.5)*8));
+    const y = Math.min(90, Math.max(10, base.y + (Math.random()-0.5)*8));
+
+    const m = { id, initials, color, quote: '', x, y };
+    mentors.push(m);
+    renderMentor(m, true);
+    inpEl.value = ''; updatePreview();
+  }
+
+  /* ── Render ── */
+  function renderMentor(m, anim) {
+    document.getElementById(m.id)?.remove();
+    const r = plot.getBoundingClientRect();
+
+    const el = document.createElement('div');
+    el.className = 'mentor-avatar' + (anim ? ' popin' : '');
+    el.id = m.id;
+    el.style.background = m.color;
+    placeEl(el, m.x, m.y, r);
+
+    /* Star badge */
+    const badge = document.createElement('div');
+    badge.className = 'q-badge' + (m.quote ? ' filled' : '');
+    badge.textContent = '★';
+    badge.addEventListener('pointerdown', e => e.stopPropagation());
+    badge.addEventListener('click', e => { e.stopPropagation(); openModal(m.id); });
+    el.appendChild(badge);
+
+    /* Initials label */
+    const lbl = document.createElement('span');
+    lbl.textContent = m.initials;
+    el.appendChild(lbl);
+
+    /* Quote popup */
+    const popup = document.createElement('div');
+    popup.className = 'q-popup';
+    popup.id = 'pop-' + m.id;
+    refreshPopup(popup, m);
+    el.appendChild(popup);
+    posPopup(popup, m);
+
+    el.addEventListener('mouseenter', () => { if (m.quote) popup.classList.add('show'); });
+    el.addEventListener('mouseleave', () => popup.classList.remove('show'));
+
+    /* Pointer drag */
+    el.addEventListener('pointerdown', e => {
+      if (e.target === badge) return;
+      e.preventDefault(); e.stopPropagation();
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('drag');
+      const r2 = plot.getBoundingClientRect();
+      const ox = e.clientX - (parseFloat(el.style.left) + SIZE/2 + r2.left);
+      const oy = e.clientY - (parseFloat(el.style.top)  + SIZE/2 + r2.top);
+
+      function onMove(ev) {
+        const rr = plot.getBoundingClientRect();
+        let x = ev.clientX - rr.left - ox;
+        let y = ev.clientY - rr.top  - oy;
+        x = Math.max(SIZE/2, Math.min(rr.width  - SIZE/2, x));
+        y = Math.max(SIZE/2, Math.min(rr.height - SIZE/2, y));
+        el.style.left = (x - SIZE/2) + 'px';
+        el.style.top  = (y - SIZE/2) + 'px';
+        m.x = x / rr.width  * 100;
+        m.y = y / rr.height * 100;
+        posPopup(popup, m);
+      }
+      function onUp() {
+        el.classList.remove('drag');
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+      }
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+    });
+
+    /* Double-click remove */
+    el.addEventListener('dblclick', () => {
+      if (confirm(`Remove ${m.initials}?`)) removeMentor(m.id);
+    });
+
+    plot.appendChild(el);
+  }
+
+  function placeEl(el, px, py, r) {
+    el.style.left = (px/100 * r.width  - SIZE/2) + 'px';
+    el.style.top  = (py/100 * r.height - SIZE/2) + 'px';
+  }
+
+  function refreshPopup(popup, m) {
+    if (m.quote) {
+      popup.innerHTML = `<span class="q-mark">\u201C</span>${esc(m.quote)}<div class="q-author">\u2014 ${m.initials}</div>`;
+    } else { popup.innerHTML = ''; }
+  }
+
+  function posPopup(popup, m) {
+    popup.style.top = popup.style.bottom = '';
+    popup.style.left = popup.style.right = '';
+    if (m.y < 55) { popup.style.top    = (SIZE + 8) + 'px'; }
+    else           { popup.style.bottom = (SIZE + 8) + 'px'; }
+    if (m.x > 55) { popup.style.right  = '0'; }
+    else           { popup.style.left   = '0'; }
+  }
+
+  /* ── Remove / Clear ── */
+  function removeMentor(id) {
+    mentors = mentors.filter(m => m.id !== id);
+    document.getElementById(id)?.remove();
+  }
+  function clearAll() {
+    if (!mentors.length) return;
+    if (!confirm('Remove everyone from the grid?')) return;
+    mentors.forEach(m => document.getElementById(m.id)?.remove());
+    mentors = [];
+  }
+
+  /* ── Modal ── */
+  function openModal(id) {
+    activeId = id;
+    const m = mentors.find(m => m.id === id);
+    document.getElementById('modal-title').textContent = `Quote for ${m.initials}`;
+    document.getElementById('modal-text').value = m.quote || '';
+    document.getElementById('modal-bg').classList.add('open');
+    setTimeout(() => document.getElementById('modal-text').focus(), 60);
+  }
+  function closeModal() {
+    document.getElementById('modal-bg').classList.remove('open');
+    activeId = null;
+  }
+  function saveQuote() {
+    if (!activeId) return;
+    const m = mentors.find(m => m.id === activeId);
+    m.quote = document.getElementById('modal-text').value.trim();
+    closeModal();
+    renderMentor(m, false);
+  }
+  function deleteCurrent() {
+    if (!activeId || !confirm('Remove this mentor?')) return;
+    removeMentor(activeId); closeModal();
+  }
+  document.getElementById('modal-bg').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-bg')) closeModal();
+  });
+
+  /* ── Export PNG ── */
+  function exportPng() {
+    document.querySelectorAll('.q-popup').forEach(p => p.classList.remove('show'));
+    if (typeof html2canvas === 'undefined') { alert('Export library loading, try again in a moment.'); return; }
+    html2canvas(document.getElementById('slide'), {
+      scale: 2.5, backgroundColor: '#ffffff', useCORS: true
+    }).then(c => {
+      const a = document.createElement('a');
+      a.href = c.toDataURL('image/png');
+      a.download = 'mentoring-grid.png'; a.click();
+    });
+  }
+
+  window.addEventListener('resize', () => mentors.forEach(m => renderMentor(m, false)));
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+</body>
+</html>
