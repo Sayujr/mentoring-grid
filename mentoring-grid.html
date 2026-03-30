@@ -307,6 +307,31 @@
       border-radius: 10px; font-size: 0.68rem; font-weight: 600;
       background: #e8f0fb; color: #2d5fa6;
     }
+
+    /* ── Quote tag under bubble ── */
+    .q-tag {
+      position: absolute;
+      top: calc(100% + 5px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.62rem;
+      color: #333;
+      line-height: 1.4;
+      max-width: 130px;
+      width: max-content;
+      white-space: normal;
+      word-break: break-word;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+      border-top: 3px solid currentColor;
+      pointer-events: none;
+      z-index: 8;
+      text-align: center;
+      display: none;
+    }
+    .q-tag.visible { display: block; }
   </style>
 </head>
 <body>
@@ -595,6 +620,14 @@
     const lbl = document.createElement('span');
     lbl.textContent = m.initials;
     el.appendChild(lbl);
+
+    /* Quote tag (always-visible rectangle under bubble) */
+    const tag = document.createElement('div');
+    tag.className = 'q-tag' + (m.quote ? ' visible' : '');
+    tag.style.color = m.color;
+    tag.style.borderTopColor = m.color;
+    if (m.quote) tag.textContent = m.quote.length > 55 ? m.quote.slice(0, 52) + '…' : m.quote;
+    el.appendChild(tag);
 
     /* Quote popup */
     const popup = document.createElement('div');
