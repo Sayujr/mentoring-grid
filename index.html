@@ -548,9 +548,10 @@
       <tr>
         <th>Initials</th>
         <th>Quadrant</th>
-        <th>Position (x, y)</th>
+        <th>Position</th>
         <th>Quote</th>
-        <th>Grid Snapshot</th>
+        <th>Time</th>
+        <th>Snapshot</th>
       </tr>
     </thead>
     <tbody id="data-tbody">
@@ -845,20 +846,29 @@
   /* ── Refresh data table ── */
   function refreshTable() {
     const tbody = document.getElementById('data-tbody');
-    if (!mentors.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No mentors placed yet.</td></tr>';
+    // Collect all history entries across all mentors, sorted oldest→newest
+    const allEntries = [];
+    mentors.forEach(m => {
+      (m.quoteHistory || []).forEach(h => allEntries.push({ m, h }));
+    });
+    if (!allEntries.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No quotes submitted yet.</td></tr>';
       return;
     }
+    allEntries.sort((a, b) => a.h.time - b.h.time);
     tbody.innerHTML = '';
-    mentors.forEach(m => {
+    allEntries.forEach(({ m, h }) => {
       const tr = document.createElement('tr');
+      const t  = new Date(h.time);
+      const ts = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       tr.innerHTML = `
         <td class="td-initials"><span style="background:${m.color}">${esc(m.initials)}</span></td>
-        <td><span class="badge-q">${esc(getQuadrant(m.x, m.y))}</span></td>
-        <td style="color:#777">${Math.round(m.x)}%, ${Math.round(m.y)}%</td>
-        <td class="td-quote">${m.quote ? '\u201C' + esc(m.quote) + '\u201D' : '<span style="color:#bbb">—</span>'}</td>
-        <td class="td-snap">${m.snapshot
-          ? `<img src="${m.snapshot}" alt="snapshot"><br><a href="${m.snapshot}" download="${m.initials}-placement.jpg" style="font-size:0.66rem;color:#2d5fa6;">&#8595; save</a>`
+        <td><span class="badge-q">${esc(h.quadrant)}</span></td>
+        <td style="color:#777">${h.x}%, ${h.y}%</td>
+        <td class="td-quote">\u201C${esc(h.quote)}\u201D</td>
+        <td style="color:#aaa;font-size:0.7rem;white-space:nowrap;">${ts}</td>
+        <td class="td-snap">${h.snapshot
+          ? `<img src="${h.snapshot}" alt="snapshot"><br><a href="${h.snapshot}" download="${m.initials}-${ts.replace(':','-')}.jpg" style="font-size:0.66rem;color:#2d5fa6;">&#8595; save</a>`
           : '<span class="no-snap">—</span>'}</td>`;
       tbody.appendChild(tr);
     });
@@ -885,11 +895,14 @@
 
   /* ── Download CSV ── */
   function downloadCSV() {
-    if (!mentors.length) { alert('No data yet — place some mentors first.'); return; }
-    const headers = ['Initials','Quadrant','X %','Y %','Quote'];
-    const rows = mentors.map(m => [
-      m.initials, getQuadrant(m.x, m.y),
-      Math.round(m.x), Math.round(m.y), m.quote || ''
+    const allEntries = [];
+    mentors.forEach(m => (m.quoteHistory||[]).forEach(h => allEntries.push({m,h})));
+    if (!allEntries.length) { alert('No quotes submitted yet.'); return; }
+    allEntries.sort((a,b) => a.h.time - b.h.time);
+    const headers = ['Initials','Quadrant','X %','Y %','Quote','Time'];
+    const rows = allEntries.map(({m,h}) => [
+      m.initials, h.quadrant, h.x, h.y, h.quote,
+      new Date(h.time).toLocaleString()
     ]);
     const csv = [headers, ...rows]
       .map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(','))
@@ -930,11 +943,24 @@
   window.saveQuote = function() {
     if (!activeId) return;
     const m = mentors.find(m => m.id === activeId);
-    m.quote = document.getElementById('modal-text').value.trim();
+    const newQuote = document.getElementById('modal-text').value.trim();
+    if (!newQuote) { closeModal(); return; }
+    m.quote = newQuote;
+    if (!m.quoteHistory) m.quoteHistory = [];
+    const entry = {
+      quote:    newQuote,
+      quadrant: getQuadrant(m.x, m.y),
+      x: Math.round(m.x),
+      y: Math.round(m.y),
+      time: Date.now(),
+      snapshot: null
+    };
+    m.quoteHistory.push(entry);
     closeModal();
     renderMentor(m, false);
     saveState();
     captureSnapshot().then(snap => {
+      entry.snapshot = snap;
       m.snapshot = snap;
       refreshTable();
       pushToSheets(m);
