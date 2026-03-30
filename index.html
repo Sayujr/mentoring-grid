@@ -389,19 +389,16 @@
   <button class="btn btn-save"  onclick="exportPng()">&#8595; Save PNG</button>
 </div>
 
-<!-- Sync corner widget (facilitator only) -->
+<!-- Facilitator-only setup widget (bottom-left corner) -->
 <div id="sync-widget">
-  <button id="sync-toggle" onclick="toggleSyncPanel()" title="Sync settings">⚙</button>
+  <button id="sync-toggle" onclick="toggleSyncPanel()" title="Facilitator setup">⚙</button>
   <div id="sync-panel">
-    <h4>⚡ Live Sync <span style="font-weight:400;color:#aaa;font-size:0.68rem;">(facilitator only)</span></h4>
-    <p style="font-size:0.7rem;color:#777;margin-bottom:8px;">Paste the same token on every device — data persists automatically across all sessions.</p>
-    <label>GitHub Token <a href="https://github.com/settings/tokens/new?scopes=gist&description=mentoring-grid" target="_blank">get one ›</a></label>
-    <input type="password" id="gh-token" placeholder="Token with gist scope"/>
-    <button class="btn btn-add" style="width:100%;margin-top:10px;font-size:0.78rem;" onclick="ghConnect()">Connect</button>
-    <span id="gh-status">● not connected</span>
-    <div id="gh-share" style="margin-top:8px;background:#f0f6ff;border-radius:7px;padding:7px 9px;display:none;font-size:0.7rem;">
-      ✓ Persistent session active.<br/>Share the same token with participants to sync all devices.
-    </div>
+    <h4>⚡ Live Sync Setup <span style="font-weight:400;color:#aaa;font-size:0.68rem;">(facilitator only)</span></h4>
+    <p style="font-size:0.7rem;color:#777;margin-bottom:10px;">One-time setup. After this, participants just open the URL — nothing for them to do.</p>
+    <label>Firebase Database URL</label>
+    <input type="text" id="fb-url" placeholder="https://your-project-default-rtdb.firebaseio.com"/>
+    <button class="btn btn-add" style="width:100%;margin-top:10px;font-size:0.78rem;" onclick="fbConnect()">Save &amp; Connect</button>
+    <span id="gh-status" style="display:block;margin-top:8px;font-size:0.7rem;font-weight:600;">● not connected</span>
   </div>
 </div>
 
@@ -959,92 +956,53 @@
   window.clearAll = function() { _origClear(); refreshTable(); saveState(); };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
 <script>
-  /* ── Private GitHub Gist sync ── */
-  /* Data stored in a SECRET gist — not publicly visible, no repo commits */
-  let ghToken     = null;
-  let gistId      = null;
-  let polling     = null;
-  let iAmDragging = false;
-  let writeTimer  = null;
+  /* ── Firebase Realtime Database sync ── */
+  /* Once FIREBASE_URL is set below, participants just open the page — zero setup */
+  const FIREBASE_URL = ''; /* ← facilitator pastes their URL here after setup */
+
+  let fbRef      = null;
+  let fbDragging = false;
 
   function toggleSyncPanel() {
     document.getElementById('sync-panel').classList.toggle('open');
   }
 
-  function ghStatus(msg, color) {
+  function fbStatus(msg, color) {
     const el = document.getElementById('gh-status');
     el.textContent = msg; el.style.color = color || '#888';
-    // Turn toggle button green when connected
     document.getElementById('sync-toggle').classList.toggle('connected', color === '#1faa74');
   }
 
-  const GIST_DESC = 'mentoring-grid-persistent-session';
-
-  async function ghConnect() {
-    const tok = document.getElementById('gh-token').value.trim();
-    if (!tok) { alert('Paste a GitHub token with "gist" scope — click "Get token ›".'); return; }
-    ghToken = tok;
-    localStorage.setItem('gh-token', tok);
-    ghStatus('⟳ Connecting…', '#f0a500');
-
-    // Find existing persistent gist by description, or create it
-    try {
-      // Search through user's gists for our named one
-      const listRes = await fetch('https://api.github.com/gists?per_page=100', {
-        headers: { Authorization: `token ${ghToken}` }
-      });
-      if (!listRes.ok) throw new Error('Invalid token or no gist scope.');
-      const gists = await listRes.json();
-      const found = gists.find(g => g.description === GIST_DESC);
-
-      if (found) {
-        gistId = found.id;
-      } else {
-        // Create it fresh
-        const res = await fetch('https://api.github.com/gists', {
-          method: 'POST',
-          headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            description: GIST_DESC,
-            public: false,
-            files: { 'session-data.json': { content: '{}' } }
-          })
-        });
-        if (!res.ok) throw new Error('Could not create gist.');
-        gistId = (await res.json()).id;
-      }
-    } catch(e) { ghStatus('✗ ' + e.message, '#e84545'); return; }
-
-    localStorage.setItem('gh-gist', gistId);
-    document.getElementById('gh-share').style.display = 'block';
-
-    await ghPoll();
-    if (polling) clearInterval(polling);
-    polling = setInterval(ghPoll, 5000);
+  function fbConnect() {
+    const url = (document.getElementById('fb-url').value || '').trim();
+    if (!url) { alert('Paste your Firebase Database URL first — see the steps below.'); return; }
+    localStorage.setItem('fb-url', url);
+    fbInit(url);
   }
 
-  /* Poll gist — requires auth (secret gist) */
-  async function ghPoll() {
-    if (!ghToken || !gistId) return;
+  function fbInit(url) {
+    fbStatus('⟳ Connecting…', '#f0a500');
     try {
-      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-        headers: { Authorization: `token ${ghToken}` }
-      });
-      if (!res.ok) throw new Error('poll failed');
-      const j    = await res.json();
-      const raw  = j.files?.['session-data.json']?.content || '{}';
-      mergeCloud(JSON.parse(raw));
-      const n = Object.keys(JSON.parse(raw)).length;
-      ghStatus(`● live — ${n} on grid`, '#1faa74');
-    } catch(e) { ghStatus('✗ sync error', '#e84545'); }
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp({ databaseURL: url });
+      fbRef = firebase.database(app).ref('mentors');
+
+      /* Real-time listener — fires instantly on any device's change */
+      fbRef.on('value', snap => {
+        if (fbDragging) return;
+        const cloud = snap.val() || {};
+        mergeCloud(cloud);
+        fbStatus('● live — ' + Object.keys(cloud).length + ' on grid', '#1faa74');
+      }, err => fbStatus('✗ ' + err.message, '#e84545'));
+
+    } catch(e) { fbStatus('✗ ' + e.message, '#e84545'); }
   }
 
   function mergeCloud(cloud) {
-    if (iAmDragging) return;
     const cloudIds = Object.keys(cloud);
     const localIds = mentors.map(m => m.id);
-
     localIds.filter(id => !cloudIds.includes(id)).forEach(id => {
       mentors = mentors.filter(m => m.id !== id);
       document.getElementById(id)?.remove();
@@ -1058,50 +1016,28 @@
     refreshTable();
   }
 
-  /* Write gist — simple PATCH, no SHA needed */
-  function scheduleWrite() {
-    if (!ghToken || !gistId) return;
-    clearTimeout(writeTimer);
-    writeTimer = setTimeout(ghWrite, 2000);
+  function fbPush(m) {
+    if (!fbRef) return;
+    const { snapshot, ...data } = m;
+    fbRef.child(m.id).set(data);
   }
 
-  async function ghWrite() {
-    if (!ghToken || !gistId) return;
-    const payload = {};
-    mentors.forEach(({ snapshot, ...m }) => { payload[m.id] = m; });
-    try {
-      await fetch(`https://api.github.com/gists/${gistId}`, {
-        method: 'PATCH',
-        headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          files: { 'session-data.json': { content: JSON.stringify(payload, null, 2) } }
-        })
-      });
-    } catch(e) {}
-  }
+  /* Hook all data changes → Firebase */
+  const _fOA = window.addMentor, _fOS = window.saveQuote,
+        _fOR = window.removeMentor, _fOC = window.clearAll;
+  window.addMentor    = function()   { _fOA(); const m = mentors[mentors.length-1]; if(m) fbPush(m); };
+  window.saveQuote    = function()   { _fOS(); const m = mentors.find(m=>m.id===activeId); if(m) fbPush(m); };
+  window.removeMentor = function(id) { _fOR(id); fbRef?.child(id).remove(); };
+  window.clearAll     = function()   { _fOC(); fbRef?.set(null); };
 
-  /* Hook into all data-change points */
-  const _gOA = window.addMentor, _gOS = window.saveQuote,
-        _gOR = window.removeMentor, _gOC = window.clearAll;
-  window.addMentor    = function()   { _gOA();    scheduleWrite(); };
-  window.saveQuote    = function()   { _gOS();    scheduleWrite(); };
-  window.removeMentor = function(id) { _gOR(id);  scheduleWrite(); };
-  window.clearAll     = function()   { _gOC();    scheduleWrite(); };
+  /* Push position after drag ends */
+  document.addEventListener('pointerdown', e => { if (e.target.closest('.mentor-avatar')) fbDragging = true; });
+  document.addEventListener('pointerup',   () => { if (fbDragging) { fbDragging = false; mentors.forEach(fbPush); } });
 
-  document.addEventListener('pointerdown', e => {
-    if (e.target.closest('.mentor-avatar')) iAmDragging = true;
-  });
-  document.addEventListener('pointerup', () => {
-    if (iAmDragging) { iAmDragging = false; scheduleWrite(); }
-  });
-
-  /* Auto-restore on load */
+  /* Auto-connect: use hardcoded URL, or saved URL from last facilitator setup */
   window.addEventListener('load', () => {
-    const tok = localStorage.getItem('gh-token');
-    const gid = localStorage.getItem('gh-gist');
-    if (tok) document.getElementById('gh-token').value = tok;
-    if (gid) document.getElementById('gh-gist').value  = gid;
-    if (tok && gid) ghConnect();
+    const url = FIREBASE_URL || localStorage.getItem('fb-url');
+    if (url) { document.getElementById('fb-url').value = url; fbInit(url); }
   });
 </script>
 </body>
