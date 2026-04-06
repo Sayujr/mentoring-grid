@@ -1126,7 +1126,14 @@
 
   /* Push position after drag ends */
   document.addEventListener('pointerdown', e => { if (e.target.closest('.mentor-avatar')) fbDragging = true; });
-  document.addEventListener('pointerup',   () => { if (fbDragging) { fbDragging = false; mentors.forEach(fbPush); } });
+  document.addEventListener('pointerup', () => {
+    if (fbDragging) {
+      mentors.forEach(fbPush);
+      saveState();
+      /* Keep fbDragging true briefly so a stale onValue echo can't snap the bubble back */
+      setTimeout(() => { fbDragging = false; }, 600);
+    }
+  });
 
   /* Auto-connect: use hardcoded URL, or saved URL from last facilitator setup */
   window.addEventListener('load', () => {

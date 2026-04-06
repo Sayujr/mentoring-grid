@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "WebFetch(domain:github.com)",
+      "Bash(echo $GITHUB_TOKEN)",
+      "Bash(echo $GH_TOKEN)",
+      "Bash(security find-internet-password:*)",
+      "Bash(gh auth:*)",
+      "Bash(git config:*)",
+      "Bash(brew install:*)",
+      "Bash(gh --version)",
+      "Bash(gh repo:*)",
+      "Bash(gh api:*)",
+      "Bash(python3 -c \"import sys,json; [print\\(f[''''name'''']\\) for f in json.load\\(sys.stdin\\)]\")",
+      "WebFetch(domain:sayujr.github.io)"
+    ]
+  }
+}
